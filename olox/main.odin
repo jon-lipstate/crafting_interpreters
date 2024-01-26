@@ -7,11 +7,31 @@ main :: proc() {
 	const := add_constant(&chunk, 1.2)
 	write_chunk(&chunk, int(Op_Code.Constant), 123)
 	write_chunk(&chunk, const, 123)
+
+	const = add_constant(&chunk, 3.4)
+	write_chunk(&chunk, int(Op_Code.Constant), 123)
+	write_chunk(&chunk, const, 123)
+
+	write_chunk(&chunk, int(Op_Code.Add), 123)
+
+	const = add_constant(&chunk, 4.6)
+	write_chunk(&chunk, int(Op_Code.Constant), 123)
+	write_chunk(&chunk, const, 123)
+
+	write_chunk(&chunk, int(Op_Code.Divide), 123)
+
+	write_chunk(&chunk, int(Op_Code.Negate), 124)
 	write_chunk(&chunk, int(Op_Code.Return), 124)
-	disassemble_chunk(&chunk, "ret")
+	vm: Virtual_Machine
+	interpret(&vm, &chunk)
 }
 
 Op_Code :: enum int {
+	Add,
+	Subtract,
+	Multiply,
+	Divide,
+	Negate,
 	Constant,
 	Return,
 }
@@ -38,7 +58,7 @@ disassemble_chunk :: proc(chunk: ^Chunk, name: string) {
 		offset = disassemble_instruction(chunk, offset)
 	}
 }
-
+import "core:reflect"
 disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
 	fmt.printf("%04d ", offset)
 	if offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1] {
@@ -49,9 +69,9 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
 	instr := chunk.code[offset]
 	switch cast(Op_Code)instr {
 	case .Constant:
-		return constant_instruction("Op_Constant", chunk, offset)
-	case .Return:
-		return simple_instruction("Op_Return", offset)
+		return constant_instruction(reflect.enum_string(cast(Op_Code)instr), chunk, offset)
+	case .Negate, .Add, .Subtract, .Multiply, .Divide, .Return:
+		return simple_instruction(reflect.enum_string(cast(Op_Code)instr), offset)
 	case:
 		fmt.printf("Unknown %d\n", instr)
 		return offset + 1

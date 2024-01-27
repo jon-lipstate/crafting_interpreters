@@ -1,29 +1,17 @@
 package crafting_interpeters
 
 import "core:fmt"
+import "core:os"
 
 main :: proc() {
-	chunk := Chunk{}
-	const := add_constant(&chunk, 1.2)
-	write_chunk(&chunk, int(Op_Code.Constant), 123)
-	write_chunk(&chunk, const, 123)
-
-	const = add_constant(&chunk, 3.4)
-	write_chunk(&chunk, int(Op_Code.Constant), 123)
-	write_chunk(&chunk, const, 123)
-
-	write_chunk(&chunk, int(Op_Code.Add), 123)
-
-	const = add_constant(&chunk, 4.6)
-	write_chunk(&chunk, int(Op_Code.Constant), 123)
-	write_chunk(&chunk, const, 123)
-
-	write_chunk(&chunk, int(Op_Code.Divide), 123)
-
-	write_chunk(&chunk, int(Op_Code.Negate), 124)
-	write_chunk(&chunk, int(Op_Code.Return), 124)
-	vm: Virtual_Machine
-	interpret(&vm, &chunk)
+	if len(os.args) == 1 {
+		repl()
+	} else if len(os.args) == 2 {
+		run_file(os.args[1])
+	} else {
+		fmt.eprintf("Usage olox [path]\n")
+		os.exit(64)
+	}
 }
 
 Op_Code :: enum int {

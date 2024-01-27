@@ -2,10 +2,9 @@ package crafting_interpeters
 
 import "core:fmt"
 import "core:strconv"
-
+////
 parser: Parser
-compiling_chunk: ^Chunk
-
+////
 Parser :: struct {
 	current:    Token,
 	previous:   Token,

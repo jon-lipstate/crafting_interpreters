@@ -1,7 +1,8 @@
 package crafting_interpeters
-
+////
 scanner: Scanner
 
+////
 Scanner :: struct {
 	src:     string,
 	i:       int,

@@ -31,6 +31,7 @@ Value :: union {
 	Nil,
 	bool,
 	f64,
+	^Obj,
 }
 
 

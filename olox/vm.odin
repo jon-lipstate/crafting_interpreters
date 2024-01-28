@@ -52,7 +52,7 @@ run_file :: proc(path: string) {
 	if res == .Compile_Error do os.exit(65)
 	if res == .Runtime_Error do os.exit(70)
 	if ok {
-		delete(src) // FIXME - this is segfaulting on linux??
+		// delete(src) // FIXME - this is segfaulting on linux??
 	}
 }
 
@@ -182,14 +182,26 @@ run :: proc() -> Interpret_Result {
 			}
 			push_value(a < b)
 		case .Return:
-			fmt.printf("%v", pop_value())
+			fmt.printf("return :: ")
+			print_value(pop_value())
 			return .Ok
 		case:
 			return .Compile_Error
 		}
 	}
 }
-
+print_value :: proc(value: Value) {
+	switch v in value {
+	case (bool):
+		fmt.println(v)
+	case (f64):
+		fmt.println(v)
+	case (Nil):
+		fmt.println("nil")
+	case (^Obj):
+		print_obj(v)
+	}
+}
 push_value :: proc(v: Value) {
 	vm.stack[vm.top] = v
 	vm.top += 1

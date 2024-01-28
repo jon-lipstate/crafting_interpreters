@@ -118,9 +118,8 @@ literal :: proc() {
 		unreachable()
 	}
 }
-_string :: proc() {
-	obj: ^Obj = transmute(^Obj)copy_string(parser.current.text[1:len(parser.current.text) - 1])
-	fmt.println("STR", parser.current.text[1:len(parser.current.text) - 1])
+_string :: proc() {str := parser.previous.text[1:len(parser.previous.text) - 1]
+	obj: ^Obj = transmute(^Obj)copy_string(str)
 	emit_constant(obj)
 }
 

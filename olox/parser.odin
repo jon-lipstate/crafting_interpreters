@@ -70,6 +70,8 @@ unary :: proc() {
 	#partial switch op_type {
 	case .Minus:
 		emit_byte(int(Op_Code.Negate))
+	case .Bang:
+		emit_byte(int(Op_Code.Not))
 	case:
 		unreachable()
 	}
@@ -88,6 +90,30 @@ binary :: proc() {
 		emit_byte(int(Op_Code.Multiply))
 	case .Slash:
 		emit_byte(int(Op_Code.Divide))
+	case .Bang_Equal:
+		emit_bytes(int(Op_Code.Equality), int(Op_Code.Not))
+	case .Equal_Equal:
+		emit_byte(int(Op_Code.Equality))
+	case .Greater:
+		emit_byte(int(Op_Code.Greater))
+	case .Greater_Equal:
+		emit_bytes(int(Op_Code.Less), int(Op_Code.Not))
+	case .Less:
+		emit_byte(int(Op_Code.Less))
+	case .Less_Equal:
+		emit_bytes(int(Op_Code.Greater), int(Op_Code.Not))
+	case:
+		unreachable()
+	}
+}
+literal :: proc() {
+	#partial switch parser.previous.type {
+	case .False:
+		emit_byte(int(Op_Code.False))
+	case .True:
+		emit_byte(int(Op_Code.True))
+	case .Nil:
+		emit_byte(int(Op_Code.Nil))
 	case:
 		unreachable()
 	}
@@ -123,6 +149,9 @@ Precedence :: enum {
 	Unary,
 	Call,
 	Primary,
+	Equal,
+	Greater,
+	Less,
 }
 Parse_Rule :: struct {
 	prefix:     Parse_Fn,
@@ -144,31 +173,31 @@ RULES := #partial [Token_Type]Parse_Rule {
 	// .Semi_Colon = {nil, nil, .None},
 	.Slash = {nil, binary, .Factor},
 	.Star = {nil, binary, .Factor},
-	// .Bang = {nil, nil, .None},
-	// .Bang_Equal = {nil, nil, .None},
+	.Bang = {unary, nil, .None},
+	.Bang_Equal = {nil, binary, .Equality},
 	// .Equal = {nil, nil, .None},
-	// .Equal_Equal = {nil, nil, .None},
-	// .Greater = {nil, nil, .None},
-	// .Greater_Equal = {nil, nil, .None},
-	// .Less = {nil, nil, .None},
-	// .Less_Equal = {nil, nil, .None},
+	.Equal_Equal = {nil, binary, .Equality},
+	.Greater = {nil, binary, .Comparison},
+	.Greater_Equal = {nil, binary, .Comparison},
+	.Less = {nil, binary, .Comparison},
+	.Less_Equal = {nil, binary, .Comparison},
 	// .Identifier = {nil, nil, .None},
 	// .String = {nil, nil, .None},
 	.Number = {number, nil, .None},
 	// .And = {nil, nil, .None},
 	// .Class = {nil, nil, .None},
 	// .Else = {nil, nil, .None},
-	// .False = {nil, nil, .None},
+	.False = {literal, nil, .None},
 	// .For = {nil, nil, .None},
 	// .Fun = {nil, nil, .None},
 	// .If = {nil, nil, .None},
-	// .Nil = {nil, nil, .None},
+	.Nil = {literal, nil, .None},
 	// .Or = {nil, nil, .None},
 	// .Print = {nil, nil, .None},
 	// .Return = {nil, nil, .None},
 	// .Super = {nil, nil, .None},
 	// .This = {nil, nil, .None},
-	// .True = {nil, nil, .None},
+	.True = {literal, nil, .None},
 	// .Var = {nil, nil, .None},
 	// .While = {nil, nil, .None},
 	// .Invalid = {nil, nil, .None},

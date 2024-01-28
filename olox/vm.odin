@@ -18,28 +18,15 @@ Virtual_Machine :: struct {
 	stack: [256]Value,
 	top:   int,
 }
+reset_stack :: proc() {
+	vm.top = 0
+}
 
 Interpret_Result :: enum {
 	Ok,
 	Compile_Error,
 	Runtime_Error,
 }
-
-Op_Code :: enum int {
-	Add,
-	Subtract,
-	Multiply,
-	Divide,
-	Negate,
-	Constant,
-	Return,
-}
-Chunk :: struct {
-	lines:     [dynamic]int,
-	code:      [dynamic]int,
-	constants: [dynamic]Value,
-}
-Value :: f64
 
 repl :: proc() {
 	buf: [1024]u8
@@ -95,6 +82,7 @@ interpret :: proc(src: []u8) -> Interpret_Result {
 }
 
 run :: proc() -> Interpret_Result {
+	vm.chunk = current_chunk()
 	read_next :: proc() -> int {
 		instr := vm.chunk.code[vm.ip] // technically ptr deref faster
 		vm.ip += 1
@@ -111,28 +99,81 @@ run :: proc() -> Interpret_Result {
 		instr := read_next()
 		switch cast(Op_Code)instr {
 		case .Negate:
-			push(-pop())
+			switch v in pop_value() {
+			case (Nil):
+				runtime_error("'nil' cannot be negated")
+				return .Runtime_Error
+			case (bool):
+				runtime_error("'bool' cannot be negated")
+				return .Runtime_Error
+			case (f64):
+				push_value(-v)
+			}
+		case .Not:
+			push_value(is_falsey(pop_value()))
 		case .Constant:
 			const := vm.chunk.constants[read_next()]
-			push(const)
+			push_value(const)
 		case .Add:
-			b := pop()
-			a := pop()
-			push(a + b)
+			b, a_ok := pop_value().(f64)
+			a, b_ok := pop_value().(f64)
+			if !a_ok || !b_ok {
+				runtime_error("'+' is for numbers\n")
+				return .Runtime_Error
+			}
+			push_value(a + b)
 		case .Subtract:
-			b := pop()
-			a := pop()
-			push(a - b)
+			b, a_ok := pop_value().(f64)
+			a, b_ok := pop_value().(f64)
+			if !a_ok || !b_ok {
+				runtime_error("'-' is for numbers\n")
+				return .Runtime_Error
+			}
+			push_value(a - b)
 		case .Multiply:
-			b := pop()
-			a := pop()
-			push(a * b)
+			b, a_ok := pop_value().(f64)
+			a, b_ok := pop_value().(f64)
+			if !a_ok || !b_ok {
+				runtime_error("'*' is for numbers\n")
+				return .Runtime_Error
+			}
+			push_value(a * b)
 		case .Divide:
-			b := pop()
-			a := pop()
-			push(a / b)
+			b, a_ok := pop_value().(f64)
+			a, b_ok := pop_value().(f64)
+			if !a_ok || !b_ok {
+				runtime_error("'/' is for numbers\n")
+				return .Runtime_Error
+			}
+			push_value(a / b)
+		case .True:
+			push_value(true)
+		case .False:
+			push_value(false)
+		case .Nil:
+			push_value(NIL)
+		case .Equality:
+			a := pop_value()
+			b := pop_value()
+			push_value(values_are_equal(a, b))
+		case .Greater:
+			b, a_ok := pop_value().(f64)
+			a, b_ok := pop_value().(f64)
+			if !a_ok || !b_ok {
+				runtime_error("'>' is for numbers\n")
+				return .Runtime_Error
+			}
+			push_value(a > b)
+		case .Less:
+			b, a_ok := pop_value().(f64)
+			a, b_ok := pop_value().(f64)
+			if !a_ok || !b_ok {
+				runtime_error("'<' is for numbers\n")
+				return .Runtime_Error
+			}
+			push_value(a < b)
 		case .Return:
-			fmt.printf("%v", pop())
+			fmt.printf("%v", pop_value())
 			return .Ok
 		case:
 			return .Compile_Error
@@ -140,15 +181,50 @@ run :: proc() -> Interpret_Result {
 	}
 }
 
-push :: proc(v: Value) {
+push_value :: proc(v: Value) {
 	vm.stack[vm.top] = v
 	vm.top += 1
 }
-pop :: proc() -> Value {
+pop_value :: proc() -> Value {
 	vm.top -= 1
+	if vm.top < 0 {runtime_error("stack pointer went negative\n");return nil}
 	return vm.stack[vm.top]
 }
-
+peek_value :: proc(lookahead := 0) -> Value {
+	return vm.stack[(vm.top - 1) - lookahead]
+}
+is_falsey :: proc(value: Value) -> bool {
+	switch v in value {
+	case (Nil):
+		return true
+	case (bool):
+		return !v
+	case (f64):
+		return false
+	}
+	unreachable()
+}
+values_are_equal :: proc(a, b: Value) -> bool {
+	if reflect.get_union_variant_raw_tag(a) != reflect.get_union_variant_raw_tag(b) {return false}
+	// i think can just cmp the unions...
+	switch av in a {
+	case (bool):
+		bv := b.(bool)
+		return av == bv
+	case (f64):
+		bv := b.(f64)
+		return av == bv
+	case (Nil):
+		return true
+	}
+	unreachable()
+}
+runtime_error :: proc(format: string, args: ..any) {
+	line := vm.chunk.lines[vm.ip]
+	fmt.eprintf("[line %d] in script ", line)
+	fmt.printf(format, ..args)
+	reset_stack()
+}
 
 emit_byte :: proc(v: int) {
 	write_chunk(current_chunk(), v, parser.previous.line)
@@ -176,51 +252,4 @@ set_constant :: proc(v: Value) -> int {
 		return 0
 	}
 	return idx
-}
-
-
-add_constant :: proc(chunk: ^Chunk, const: Value) -> (index: int) {
-	append(&chunk.constants, const)
-	return len(chunk.constants) - 1
-}
-
-write_chunk :: proc(chunk: ^Chunk, op: int, line: int) {
-	append(&chunk.lines, line)
-	append(&chunk.code, op)
-}
-
-disassemble_chunk :: proc(chunk: ^Chunk, name: string) {
-	fmt.printf("-- %s -- \n", name)
-	for offset := 0; offset < len(chunk.code); {
-		offset = disassemble_instruction(chunk, offset)
-	}
-}
-disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
-	fmt.printf("%04d ", offset)
-	if offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1] {
-		fmt.printf("   | ")
-	} else {
-		fmt.printf("%4d ", chunk.lines[offset])
-	}
-	instr := chunk.code[offset]
-	switch cast(Op_Code)instr {
-	case .Constant:
-		return constant_instruction(reflect.enum_string(cast(Op_Code)instr), chunk, offset)
-	case .Negate, .Add, .Subtract, .Multiply, .Divide, .Return:
-		return simple_instruction(reflect.enum_string(cast(Op_Code)instr), offset)
-	case:
-		fmt.printf("Unknown %d\n", instr)
-		return offset + 1
-	}
-}
-
-simple_instruction :: proc(name: string, offset: int) -> int {
-	fmt.printf("%s\n", name)
-	return offset + 1
-}
-
-constant_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
-	const_index := chunk.code[offset + 1]
-	fmt.printf("%-16s %4d '%v'\n", name, const_index, chunk.constants[const_index])
-	return offset + 2
 }

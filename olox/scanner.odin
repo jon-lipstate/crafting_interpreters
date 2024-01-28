@@ -49,13 +49,13 @@ scan_token :: proc() -> Token {
 	case '*':
 		type = .Star
 	case '!':
-		type = match('=') ? .Bang_Equal : .Bang
+		type = match_char('=') ? .Bang_Equal : .Bang
 	case '=':
-		type = match('=') ? .Equal_Equal : .Equal
+		type = match_char('=') ? .Equal_Equal : .Equal
 	case '<':
-		type = match('=') ? .Less_Equal : .Less
+		type = match_char('=') ? .Less_Equal : .Less
 	case '>':
-		type = match('=') ? .Greater_Equal : .Greater
+		type = match_char('=') ? .Greater_Equal : .Greater
 	case '"':
 		return scan_string()
 	}
@@ -70,8 +70,8 @@ scan_token :: proc() -> Token {
 
 scan_string :: proc() -> Token {
 	start := scanner.i - 1
-	for peek() != '"' && !at_eof() {
-		if peek() == '\n' do scanner.line += 1
+	for peek_char() != '"' && !at_eof() {
+		if peek_char() == '\n' do scanner.line += 1
 		advance_char()
 	}
 	if at_eof() {
@@ -83,15 +83,15 @@ scan_string :: proc() -> Token {
 
 skip_whitespace :: proc() {
 	for {
-		switch peek() {
+		switch peek_char() {
 		case '\n':
 			scanner.line += 1
 			fallthrough
 		case ' ', '\t', '\r':
 			advance_char()
 		case '/':
-			if peek(1) == '/' {
-				for peek() != '\n' && scanner.i < len(scanner.src) {advance_char()}
+			if peek_char(1) == '/' {
+				for peek_char() != '\n' && scanner.i < len(scanner.src) {advance_char()}
 			}
 		case:
 			return
@@ -106,11 +106,11 @@ advance_char :: proc() -> u8 {
 	scanner.i += 1
 	return scanner.src[scanner.i - 1]
 }
-peek :: proc(lookahead := 0) -> u8 {
+peek_char :: proc(lookahead := 0) -> u8 {
 	if !at_eof(lookahead) do return 0
 	return scanner.src[scanner.i + lookahead]
 }
-match :: proc(expected: u8) -> bool {
+match_char :: proc(expected: u8) -> bool {
 	if at_eof() do return false
 	if scanner.src[scanner.i] != expected do return false
 	scanner.i += 1
@@ -125,17 +125,18 @@ is_alpha :: proc(ch: u8) -> bool {
 }
 scan_number :: proc() -> Token {
 	start := scanner.i - 1
-	for is_digit(peek()) do advance_char()
-	if peek() == '.' && is_digit(peek(1)) {
+	for is_digit(peek_char()) do advance_char()
+	if peek_char() == '.' && is_digit(peek_char(1)) {
 		advance_char()
-		for is_digit(peek()) do advance_char()
+		for is_digit(peek_char()) do advance_char()
 	}
 	return generate_token(.Number, start)
 }
 scan_ident :: proc() -> Token {
 	start := scanner.i - 1
-	for is_alpha(peek()) || is_digit(peek()) {advance_char()}
-	return generate_token(.Identifier, start)
+	for is_alpha(peek_char()) || is_digit(peek_char()) {advance_char()}
+	type := identifier_type(scanner.src[start:scanner.i])
+	return generate_token(type, start)
 }
 
 import "core:fmt"
@@ -149,53 +150,42 @@ generate_token :: proc(type: Token_Type, start: int) -> Token {
 	return token
 }
 
-identifier_type :: proc() -> Token_Type {
-	switch peek() {
-	case 'a':
-		return check_keyword("and", .And)
-	case 'c':
-		return check_keyword("class", .Class)
-	case 'e':
-		return check_keyword("else", .Else)
-	case 'f':
-		switch peek(1) {
-		case 'a':
-			return check_keyword("false", .False)
-		case 'o':
-			return check_keyword("for", .For)
-		case 'u':
-			return check_keyword("fun", .Fun)
-		}
-	case 'i':
-		return check_keyword("if", .If)
-	case 'n':
-		return check_keyword("nil", .Nil)
-	case 'o':
-		return check_keyword("or", .Or)
-	case 'p':
-		return check_keyword("print", .Print)
-	case 'r':
-		return check_keyword("return", .Return)
-	case 's':
-		return check_keyword("super", .Super)
-	case 't':
-		switch peek(1) {
-		case 'h':
-			return check_keyword("this", .This)
-		case 'r':
-			return check_keyword("true", .True)
-		}
-	case 'v':
-		return check_keyword("var", .Var)
-	case 'w':
-		return check_keyword("while", .While)
+identifier_type :: proc(text: string) -> Token_Type {
+	switch text {
+	case "and":
+		return .And
+	case "class":
+		return .Class
+	case "else":
+		return .Else
+	case "false":
+		return .False
+	case "for":
+		return .For
+	case "fun":
+		return .Fun
+	case "if":
+		return .If
+	case "nil":
+		return .Nil
+	case "or":
+		return .Or
+	case "print":
+		return .Print
+	case "return":
+		return .Return
+	case "super":
+		return .Super
+	case "this":
+		return .This
+	case "true":
+		return .True
+	case "var":
+		return .Var
+	case "while":
+		return .While
 	case:
-		return .Invalid
+		return .Identifier
 	}
-	return .Invalid
-}
-check_keyword :: proc(text: string, type: Token_Type) -> Token_Type {
-	if at_eof(len(text)) do return .Invalid
-	val := scanner.src[scanner.i:scanner.i + len(text)]
-	return val == text ? type : .Invalid
+	return .Identifier
 }

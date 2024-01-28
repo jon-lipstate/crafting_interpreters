@@ -13,10 +13,11 @@ vm := Virtual_Machine{}
 
 ////
 Virtual_Machine :: struct {
-	chunk: ^Chunk,
-	ip:    int,
-	stack: [256]Value,
-	top:   int,
+	chunk:   ^Chunk,
+	ip:      int,
+	stack:   [256]Value,
+	top:     int,
+	objects: ^Obj,
 }
 reset_stack :: proc() {
 	vm.top = 0
@@ -42,7 +43,7 @@ repl :: proc() {
 }
 
 run_file :: proc(path: string) {
-	src, ok := os.read_entire_file_from_filename(path);defer if ok do delete(src)
+	src, ok := os.read_entire_file_from_filename(path)
 	if !ok {
 		fmt.eprintln("Failed to open the file.")
 		os.exit(74)
@@ -50,6 +51,9 @@ run_file :: proc(path: string) {
 	res := interpret(src)
 	if res == .Compile_Error do os.exit(65)
 	if res == .Runtime_Error do os.exit(70)
+	if ok {
+		delete(src) // FIXME - this is segfaulting on linux??
+	}
 }
 
 compile :: proc(src: []u8, chunk: ^Chunk) -> bool {
@@ -106,6 +110,9 @@ run :: proc() -> Interpret_Result {
 			case (bool):
 				runtime_error("'bool' cannot be negated")
 				return .Runtime_Error
+			case (^Obj):
+				runtime_error("'string' cannot be negated")
+				return .Runtime_Error
 			case (f64):
 				push_value(-v)
 			}
@@ -115,13 +122,15 @@ run :: proc() -> Interpret_Result {
 			const := vm.chunk.constants[read_next()]
 			push_value(const)
 		case .Add:
-			b, a_ok := pop_value().(f64)
-			a, b_ok := pop_value().(f64)
-			if !a_ok || !b_ok {
-				runtime_error("'+' is for numbers\n")
+			if is_string(peek_value()) && is_string(peek_value(1)) {
+				concatenate()
+			} else if is_number(peek_value()) && is_number(peek_value(1)) {
+				b := pop_value().(f64)
+				a := pop_value().(f64)
+			} else {
+				runtime_error("'+' is for two strings or two numbers\n")
 				return .Runtime_Error
 			}
-			push_value(a + b)
 		case .Subtract:
 			b, a_ok := pop_value().(f64)
 			a, b_ok := pop_value().(f64)
@@ -201,8 +210,14 @@ is_falsey :: proc(value: Value) -> bool {
 		return !v
 	case (f64):
 		return false
+	case (^Obj):
+		return false // todo: verify
 	}
 	unreachable()
+}
+is_number :: proc(value: Value) -> bool {
+	_, is_number := value.(f64)
+	return is_number
 }
 values_are_equal :: proc(a, b: Value) -> bool {
 	if reflect.get_union_variant_raw_tag(a) != reflect.get_union_variant_raw_tag(b) {return false}
@@ -216,6 +231,10 @@ values_are_equal :: proc(a, b: Value) -> bool {
 		return av == bv
 	case (Nil):
 		return true
+	case (^Obj):
+		as := (transmute(^Obj_String)(a.(^Obj))).str
+		bs := (transmute(^Obj_String)(b.(^Obj))).str
+		return as == bs
 	}
 	unreachable()
 }
@@ -252,4 +271,34 @@ set_constant :: proc(v: Value) -> int {
 		return 0
 	}
 	return idx
+}
+
+free_objects :: proc() {
+	obj := vm.objects
+	for obj != nil {
+		switch obj.type {
+		case .String:
+			os := transmute(^Obj_String)obj
+			reallocate_slice(transmute([]u8)os.str, 0)
+			reallocate(os, size_of(Obj_String), 0)
+		}
+		obj = obj.next
+	}
+}
+
+reallocate_slice :: proc(slice: []$T, new_len: int) {
+	if new_len == 0 {
+		delete(slice)
+	} else {
+		unimplemented()
+	}
+}
+
+
+reallocate :: proc(ptr: rawptr, current_size: int, new_size: int) {
+	if new_size == 0 {
+		free(ptr)
+	} else {
+		unimplemented()
+	}
 }

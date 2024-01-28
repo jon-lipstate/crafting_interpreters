@@ -118,6 +118,11 @@ literal :: proc() {
 		unreachable()
 	}
 }
+_string :: proc() {
+	obj: ^Obj = transmute(^Obj)copy_string(parser.current.text[1:len(parser.current.text) - 1])
+	fmt.println("STR", parser.current.text[1:len(parser.current.text) - 1])
+	emit_constant(obj)
+}
 
 parse_precedence :: proc(prec: Precedence) {
 	advance_token()
@@ -182,7 +187,7 @@ RULES := #partial [Token_Type]Parse_Rule {
 	.Less = {nil, binary, .Comparison},
 	.Less_Equal = {nil, binary, .Comparison},
 	// .Identifier = {nil, nil, .None},
-	// .String = {nil, nil, .None},
+	.String = {_string, nil, .None},
 	.Number = {number, nil, .None},
 	// .And = {nil, nil, .None},
 	// .Class = {nil, nil, .None},

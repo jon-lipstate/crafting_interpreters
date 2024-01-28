@@ -59,13 +59,25 @@ scan_token :: proc() -> Token {
 	case '"':
 		return scan_string()
 	}
-	if is_alpha(ch) {return scan_ident()}
-	if is_digit(ch) {return scan_number()}
-	if type != .Invalid {
-		return generate_token(type, start)
-	}
 
-	return Token{type = .Invalid, text = "Unexpected character", line = scanner.line}
+	if type == .Invalid {
+		if is_alpha(ch) {
+			return scan_ident()
+		}
+		if is_digit(ch) {
+			return scan_number()
+		}
+		return(
+			Token {
+				type = .Invalid,
+				text = fmt.tprintf("Unexpected character <%v>\n", rune(ch)),
+				line = scanner.line,
+			} \
+		)
+
+	}
+	return generate_token(type, start)
+
 }
 
 scan_string :: proc() -> Token {
@@ -83,7 +95,8 @@ scan_string :: proc() -> Token {
 
 skip_whitespace :: proc() {
 	for {
-		switch peek_char() {
+		ch := peek_char()
+		switch ch {
 		case '\n':
 			scanner.line += 1
 			fallthrough
@@ -100,18 +113,21 @@ skip_whitespace :: proc() {
 }
 
 at_eof :: proc(lookahead: int = 0) -> bool {
-	return scanner.i + lookahead < len(scanner.src)
+	i := scanner.i + lookahead
+	eof := len(scanner.src)
+	return i >= eof
 }
 advance_char :: proc() -> u8 {
 	scanner.i += 1
 	return scanner.src[scanner.i - 1]
 }
 peek_char :: proc(lookahead := 0) -> u8 {
-	if !at_eof(lookahead) do return 0
-	return scanner.src[scanner.i + lookahead]
+	if at_eof(lookahead) do return 0
+	ch := scanner.src[scanner.i + lookahead]
+	return ch
 }
 match_char :: proc(expected: u8) -> bool {
-	if at_eof() do return false
+	if at_eof() {return false}
 	if scanner.src[scanner.i] != expected do return false
 	scanner.i += 1
 	return true

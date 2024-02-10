@@ -9,3 +9,4 @@ ols.json
 *.obj
 *.pdb
 .vscode/*
+c/

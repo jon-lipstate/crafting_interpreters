@@ -296,8 +296,9 @@ free_objects :: proc() {
 		switch obj.type {
 		case Obj_Type.String:
 			os := transmute(^Obj_String)obj
-			reallocate_slice(&(os.str)[0], 1, len(os.str), 0)
-			reallocate(os, size_of(Obj_String), 0, 0)
+			ob := transmute([]u8)os.str
+			reallocate_slice(&(ob)[0], 1, len(os.str), 0)
+			reallocate(os, Obj_String, 0, 0)
 		}
 		obj = obj.next
 	}
@@ -317,7 +318,7 @@ reallocate_slice :: proc(ptr: rawptr, size: int, current_size: int, new_len: int
 }
 
 
-reallocate :: proc(ptr: rawptr, type: $T, current_size: int, new_size: int) -> rawptr {
+reallocate :: proc(ptr: rawptr, $T: typeid, current_size: int, new_size: int) -> rawptr {
 	if new_size == 0 {
 		free(ptr)
 		return nil

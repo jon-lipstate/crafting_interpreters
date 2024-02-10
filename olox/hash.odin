@@ -16,7 +16,7 @@ Entry :: struct {
 
 set :: proc(table: ^Table, key: u32, value: Value) -> (is_new: bool) {
 	assert(key != 0, "Zero is a reserved Key")
-	if table.count + 1 > len(table.entries) * MAX_TABLE_LOAD {
+	if table.count + 1 > int(f32(len(table.entries)) * MAX_TABLE_LOAD) {
 		adjust_capacity(table, grow_capacity(len(table.entries)))
 	}
 	entry := find_entry(table.entries, key)
@@ -53,7 +53,7 @@ add_all :: proc(src, dest: ^Table) {
 }
 
 find_entry :: proc(entries: []Entry, key: u32) -> ^Entry {
-	index := key % len(entries)
+	index := key % u32(len(entries))
 	tombstone: ^Entry
 	for {
 		entry := &entries[index]
@@ -66,7 +66,7 @@ find_entry :: proc(entries: []Entry, key: u32) -> ^Entry {
 				tombstone = entry
 			}
 		}
-		index = (index + 1) % len(entries)
+		index = (index + 1) % u32(len(entries))
 	}
 }
 
@@ -77,7 +77,7 @@ adjust_capacity :: proc(table: ^Table, capacity: int) {
 		for entry in table.entries {
 			if entry.key == 0 do continue
 			dest := find_entry(entries, entry.key)
-			dest.value^ = entry.value
+			dest.value = entry.value
 			table.count += 1
 		}
 		delete(table.entries)

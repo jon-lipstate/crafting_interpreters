@@ -1,6 +1,7 @@
 package crafting_interpeters
 
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:reflect"
 
@@ -18,6 +19,7 @@ Virtual_Machine :: struct {
 	stack:   [256]Value,
 	top:     int,
 	objects: ^Obj,
+	strings: Table,
 }
 reset_stack :: proc() {
 	vm.top = 0
@@ -284,32 +286,45 @@ set_constant :: proc(v: Value) -> int {
 	}
 	return idx
 }
-
+free_vm :: proc() {
+	delete(vm.strings.entries)
+	free_objects()
+}
 free_objects :: proc() {
 	obj := vm.objects
 	for obj != nil {
 		switch obj.type {
-		case .String:
+		case Obj_Type.String:
 			os := transmute(^Obj_String)obj
-			reallocate_slice(transmute([]u8)os.str, 0)
-			reallocate(os, size_of(Obj_String), 0)
+			reallocate_slice(&(os.str)[0], 1, len(os.str), 0)
+			reallocate(os, size_of(Obj_String), 0, 0)
 		}
 		obj = obj.next
 	}
 }
 
-reallocate_slice :: proc(slice: []$T, new_len: int) {
+reallocate_slice :: proc(ptr: rawptr, size: int, current_size: int, new_len: int) -> rawptr {
 	if new_len == 0 {
-		delete(slice)
+		free(ptr)
+		return nil
+	} else if ptr == nil {
+		p, ok := mem.alloc(size * new_len)
+		assert(ok == .None)
+		return p
 	} else {
 		unimplemented()
 	}
 }
 
 
-reallocate :: proc(ptr: rawptr, current_size: int, new_size: int) {
+reallocate :: proc(ptr: rawptr, type: $T, current_size: int, new_size: int) -> rawptr {
 	if new_size == 0 {
 		free(ptr)
+		return nil
+	} else if ptr == nil {
+		p, ok := mem.alloc(size_of(T) * new_size)
+		assert(ok == .None)
+		return p
 	} else {
 		unimplemented()
 	}

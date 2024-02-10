@@ -90,5 +90,21 @@ grow_capacity :: proc(current: int) -> int {
 }
 
 find_string :: proc(tbl: ^Table, s: string, hash: u32) -> ^Obj_String {
-	unimplemented()
+	if tbl.count == 0 do return nil
+
+	i := hash & u32(len(tbl.entries)) - 1
+	for {
+		e := &tbl.entries[i]
+		if e.key == 0 {
+			if is_nil(e.value) do return nil
+		} else if e.key == hash {
+			obj, is_str := e.value.(^Obj)
+			if !is_str || obj.type != .String do return nil
+			os := (transmute(^Obj_String)obj)
+			if os.str == s {
+				return os
+			}
+		}
+		i = (i + 1) & u32(len(tbl.entries) - 1)
+	}
 }

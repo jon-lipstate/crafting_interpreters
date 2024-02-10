@@ -54,6 +54,12 @@ is_string :: proc(val: Value) -> bool {
 	if !ok do return false
 	return obj.type == .String
 }
+is_nil :: proc(val: Value) -> bool {
+	_, is := val.(Nil);if is do return true
+	// TODO: fixme
+	return false
+}
+
 to_obj :: proc(obj: ^$T) -> ^Obj {
 	return transmute(^Obj)obj
 }

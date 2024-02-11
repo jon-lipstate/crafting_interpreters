@@ -20,14 +20,14 @@ set :: proc(table: ^Table, key: u32, value: Value) -> (is_new: bool) {
 		adjust_capacity(table, grow_capacity(len(table.entries)))
 	}
 	entry := find_entry(table.entries, key)
-	is_new = entry == nil // FIXME - need check for K = 0??
+	is_new = entry.key == 0
 	if is_new && entry.value == nil {table.count += 1}
 	entry.key = key
 	entry.value = value
 
 	return
 }
-
+// fixme, need string too...?
 get :: proc(table: ^Table, key: u32) -> (value: Value, found: bool) {
 	if table.count == 0 do return
 	entry := find_entry(table.entries, key)
@@ -86,13 +86,14 @@ adjust_capacity :: proc(table: ^Table, capacity: int) {
 }
 
 grow_capacity :: proc(current: int) -> int {
+	if current == 0 do return 8
 	return current * 2
 }
 
 find_string :: proc(tbl: ^Table, s: string, hash: u32) -> ^Obj_String {
 	if tbl.count == 0 do return nil
 
-	i := hash & u32(len(tbl.entries)) - 1
+	i := hash % (u32(len(tbl.entries)) - 1)
 	for {
 		e := &tbl.entries[i]
 		if e.key == 0 {
@@ -105,6 +106,6 @@ find_string :: proc(tbl: ^Table, s: string, hash: u32) -> ^Obj_String {
 				return os
 			}
 		}
-		i = (i + 1) & u32(len(tbl.entries) - 1)
+		i = (i + 1) % (u32(len(tbl.entries)) - 1)
 	}
 }

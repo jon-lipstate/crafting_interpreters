@@ -55,8 +55,7 @@ is_string :: proc(val: Value) -> bool {
 	return obj.type == .String
 }
 is_nil :: proc(val: Value) -> bool {
-	_, is := val.(Nil);if is do return true
-	// TODO: fixme
+	if val == nil do return true
 	return false
 }
 

@@ -8,12 +8,17 @@ Op_Code :: enum int {
 	Add,
 	Subtract,
 	Multiply,
+	Define_Global,
+	Get_Global,
+	Set_Global,
 	Divide,
 	Negate,
+	Print,
 	Constant,
 	Nil,
 	True,
 	False,
+	Pop,
 	Not,
 	Equality,
 	Greater,
@@ -50,6 +55,8 @@ disassemble_chunk :: proc(chunk: ^Chunk, name: string) {
 	for offset := 0; offset < len(chunk.code); {
 		offset = disassemble_instruction(chunk, offset)
 	}
+	fmt.printf("-- END -- \n")
+
 }
 disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
 	fmt.printf("%04d ", offset)
@@ -60,9 +67,9 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
 	}
 	instr := chunk.code[offset]
 	switch cast(Op_Code)instr {
-	case .Constant:
+	case .Constant, .Define_Global, .Get_Global, .Set_Global:
 		return constant_instruction(reflect.enum_string(cast(Op_Code)instr), chunk, offset)
-	case .Negate, .Add, .Subtract, .Multiply, .Divide, .Return, .True, .False, .Nil, .Not, .Equality, .Greater, .Less:
+	case .Negate, .Add, .Subtract, .Multiply, .Divide, .Return, .True, .False, .Nil, .Not, .Equality, .Greater, .Less, .Print, .Pop:
 		return simple_instruction(reflect.enum_string(cast(Op_Code)instr), offset)
 	case:
 		fmt.printf("Unknown %d\n", instr)
@@ -77,6 +84,13 @@ simple_instruction :: proc(name: string, offset: int) -> int {
 
 constant_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
 	const_index := chunk.code[offset + 1]
-	fmt.printf("%-16s %4d '%v'\n", name, const_index, chunk.constants[const_index])
+	val := chunk.constants[const_index]
+	str, is_str := value_to_string(val)
+	if is_str {
+		fmt.printf("%-16s %4d '%v'\n", name, const_index, str)
+
+	} else {
+		fmt.printf("%-16s %4d '%v'\n", name, const_index, val)
+	}
 	return offset + 2
 }

@@ -20,6 +20,7 @@ Virtual_Machine :: struct {
 	top:     int,
 	objects: ^Obj,
 	strings: Table,
+	globals: Table,
 }
 reset_stack :: proc() {
 	vm.top = 0
@@ -62,7 +63,9 @@ compile :: proc(src: []u8, chunk: ^Chunk) -> bool {
 	init_scanner(src)
 	compiling_chunk = chunk
 	advance_token()
-	expression()
+	for !match_token(.EOF) {
+		declaration()
+	}
 	consume(.EOF, "Expected EOF")
 	end_compiler()
 	return !parser.had_error
@@ -89,11 +92,7 @@ interpret :: proc(src: []u8) -> Interpret_Result {
 
 run :: proc() -> Interpret_Result {
 	vm.chunk = current_chunk()
-	read_next :: proc() -> int {
-		instr := vm.chunk.code[vm.ip] // technically ptr deref faster
-		vm.ip += 1
-		return instr
-	}
+
 	loop: for {
 		when DEBUG_TRACE {
 			for v, i in vm.stack {
@@ -129,6 +128,7 @@ run :: proc() -> Interpret_Result {
 			} else if is_number(peek_value()) && is_number(peek_value(1)) {
 				b := pop_value().(f64)
 				a := pop_value().(f64)
+				push_value(a + b)
 			} else {
 				runtime_error("'+' is for two strings or two numbers\n")
 				return .Runtime_Error
@@ -161,6 +161,37 @@ run :: proc() -> Interpret_Result {
 			push_value(true)
 		case .False:
 			push_value(false)
+		case .Pop:
+			pop_value()
+		case .Define_Global:
+			os := read_string()
+			fmt.println("------> DEFINE", os.str)
+			val := pop_value() // <-- this is the defined value of the global
+			fmt.println("defined::", value_to_string(val))
+			set(&vm.globals, os.hash, val)
+
+		case .Get_Global:
+			os := read_string()
+			val, found := get(&vm.globals, os.hash)
+			str, is_str := value_to_string(val)
+
+			fmt.println("------> Try-Get", os.str, found, str)
+			fmt.println("------> GET", str)
+
+			if !found {
+				runtime_error("undefined variable '%v'", os.str)
+				return .Runtime_Error
+			}
+			push_value(val)
+
+		case .Set_Global:
+			os := read_string()
+			is_new := set(&vm.globals, os.hash, peek_value())
+			if is_new {
+				remove(&vm.globals, os.hash)
+				runtime_error("Undefined Variable '%v'", os.str)
+				return .Runtime_Error
+			}
 		case .Nil:
 			push_value(NIL)
 		case .Equality:
@@ -183,9 +214,12 @@ run :: proc() -> Interpret_Result {
 				return .Runtime_Error
 			}
 			push_value(a < b)
-		case .Return:
-			fmt.printf("return :: ")
+		case .Print:
 			print_value(pop_value())
+			fmt.printf("\n")
+		case .Return:
+			// fmt.printf("return :: ")
+			// print_value(pop_value())
 			return .Ok
 		case:
 			return .Compile_Error
@@ -205,12 +239,21 @@ print_value :: proc(value: Value) {
 	}
 }
 push_value :: proc(v: Value) {
+	fmt.print("push", vm.top + 1, " ")
+	print_value(v)
+	fmt.println()
+
 	vm.stack[vm.top] = v
 	vm.top += 1
 }
 pop_value :: proc() -> Value {
 	vm.top -= 1
-	if vm.top < 0 {runtime_error("stack pointer went negative\n");return nil}
+	if vm.top < 0 {runtime_error("!!! stack pointer went negative\n");return nil}
+	when true {
+		fmt.print("pop", vm.top, " ")
+		print_value(vm.stack[vm.top])
+		fmt.println()
+	}
 	return vm.stack[vm.top]
 }
 peek_value :: proc(lookahead := 0) -> Value {
@@ -288,6 +331,7 @@ set_constant :: proc(v: Value) -> int {
 }
 free_vm :: proc() {
 	delete(vm.strings.entries)
+	delete(vm.globals.entries)
 	free_objects()
 }
 free_objects :: proc() {
@@ -329,4 +373,24 @@ reallocate :: proc(ptr: rawptr, $T: typeid, current_size: int, new_size: int) ->
 	} else {
 		unimplemented()
 	}
+}
+
+
+match_token :: proc(t: Token_Type) -> bool {
+	if parser.current.type != t do return false
+	advance_token()
+	return true
+}
+read_next :: proc() -> int {
+	instr := vm.chunk.code[vm.ip] // technically ptr deref faster
+	vm.ip += 1
+	return instr
+}
+
+read_string :: proc() -> ^Obj_String {
+	idx := read_next()
+	val := vm.chunk.constants[idx]
+	obj := val.(^Obj)
+	os := transmute(^Obj_String)obj
+	return os
 }

@@ -62,6 +62,7 @@ run_file :: proc(path: string) {
 compile :: proc(src: []u8, chunk: ^Chunk) -> bool {
 	init_scanner(src)
 	compiling_chunk = chunk
+	current = new(Compiler)
 	advance_token()
 	for !match_token(.EOF) {
 		declaration()
@@ -192,6 +193,15 @@ run :: proc() -> Interpret_Result {
 				runtime_error("Undefined Variable '%v'", os.str)
 				return .Runtime_Error
 			}
+
+		case .Get_Local:
+			slot := read_next()
+			push_value(vm.stack[slot])
+
+		case .Set_Local:
+			slot := read_next()
+			vm.stack[slot] = peek_value()
+
 		case .Nil:
 			push_value(NIL)
 		case .Equality:

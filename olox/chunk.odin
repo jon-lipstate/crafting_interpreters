@@ -11,6 +11,8 @@ Op_Code :: enum int {
 	Define_Global,
 	Get_Global,
 	Set_Global,
+	Get_Local,
+	Set_Local,
 	Divide,
 	Negate,
 	Print,
@@ -67,6 +69,8 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
 	}
 	instr := chunk.code[offset]
 	switch cast(Op_Code)instr {
+	case .Get_Local, .Set_Local:
+		return byte_instruction(reflect.enum_string(cast(Op_Code)instr), chunk, offset)
 	case .Constant, .Define_Global, .Get_Global, .Set_Global:
 		return constant_instruction(reflect.enum_string(cast(Op_Code)instr), chunk, offset)
 	case .Negate, .Add, .Subtract, .Multiply, .Divide, .Return, .True, .False, .Nil, .Not, .Equality, .Greater, .Less, .Print, .Pop:
@@ -92,5 +96,11 @@ constant_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
 	} else {
 		fmt.printf("%-16s %4d '%v'\n", name, const_index, val)
 	}
+	return offset + 2
+}
+
+byte_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
+	slot := chunk.code[offset + 1]
+	fmt.printf("%-16s %4d\n", name, slot)
 	return offset + 2
 }

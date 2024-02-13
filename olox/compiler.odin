@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:strconv"
 ////
 parser: Parser
+current: ^Compiler
 ////
 Parser :: struct {
 	current:    Token,
@@ -40,7 +41,7 @@ error_at :: proc(t: Token, msg: string) {
 	if t.type == .EOF {
 		fmt.eprintf(" at end")
 	} else {
-		fmt.eprintf(" at '%v'", t.text)
+		fmt.eprintf(" at '%v'. Reason: %v\n", t.text, msg)
 	}
 	parser.had_error = true
 }
@@ -78,6 +79,10 @@ var_decl :: proc() {
 statement :: proc() {
 	if match_token(.Print) {
 		print_statement()
+	} else if match_token(.Left_Brace) {
+		begin_scope()
+		block()
+		end_scope()
 	} else {
 		expression_statement()
 	}
@@ -89,6 +94,24 @@ expression_statement :: proc() {
 }
 expression :: proc() {
 	parse_precedence(.Assign)
+}
+
+block :: proc() {
+	for parser.current.type != .Right_Brace && parser.current.type != .EOF {
+		declaration()
+	}
+	consume(.Right_Brace, "Expect '}' to close a block.")
+}
+begin_scope :: proc() {
+	current.scope_depth += 1
+}
+end_scope :: proc() {
+	current.scope_depth -= 1
+	for current.local_count > 0 &&
+	    current.locals[current.local_count - 1].depth > current.scope_depth {
+		emit_byte(int(Op_Code.Pop))
+		current.local_count -= 1
+	}
 }
 
 print_statement :: proc() {
@@ -186,12 +209,22 @@ variable :: proc(can_assign: bool = false) {
 	named_variable(&parser.previous, can_assign)
 }
 named_variable :: proc(token: ^Token, can_assign: bool) {
-	arg := identifier_constant(token)
+	get_op, set_op: Op_Code
+	arg := resolve_local(current, token.text)
+	if arg != -1 {
+		get_op = .Get_Local
+		set_op = .Set_Local
+	} else {
+		arg = identifier_constant(token)
+		get_op = .Get_Global
+		set_op = .Set_Global
+	}
+
 	if can_assign && match_token(.Equal) {
 		expression()
-		emit_bytes(int(Op_Code.Set_Global), arg)
+		emit_bytes(int(set_op), arg)
 	} else {
-		emit_bytes(int(Op_Code.Get_Global), arg)
+		emit_bytes(int(get_op), arg)
 	}
 }
 parse_precedence :: proc(prec: Precedence) {
@@ -221,13 +254,59 @@ identifier_constant :: proc(t: ^Token) -> int {
 }
 parse_var :: proc(err_msg: string) -> int {
 	consume(.Identifier, err_msg)
+	declare_var()
+	if current.scope_depth > 0 do return 0 // we're in a local scope -> exit 
+
 	return identifier_constant(&parser.previous)
 }
 
 define_var :: proc(global: int) {
+	if current.scope_depth > 0 {
+		mark_initialized()
+		return
+	}
 	emit_bytes(int(Op_Code.Define_Global), global)
 }
-
+mark_initialized :: proc() {
+	current.locals[current.local_count - 1].depth = current.scope_depth
+}
+declare_var :: proc() {
+	if current.scope_depth == 0 do return
+	name := parser.previous.text
+	for i := current.local_count - 1; i >= 0; i -= 1 {
+		local := &current.locals[i]
+		if local.depth != -1 && local.depth < current.scope_depth {
+			break
+		}
+		if local.name == name {
+			error("repeated declaration of variable in this scope")
+		}
+	}
+	add_local(name)
+}
+add_local :: proc(name: string) {
+	if current.local_count == 255 {
+		error("too many locals in function")
+		return
+	}
+	local := &current.locals[current.local_count]
+	current.local_count += 1
+	local.name = name
+	local.depth = -1
+}
+resolve_local :: proc(compiler: ^Compiler, name: string) -> int {
+	for i := compiler.local_count - 1; i >= 0; i -= 1 {
+		local := &compiler.locals[i]
+		// because we walk backwards, inner values correctly shadow outers
+		if local.name == name {
+			if local.depth == -1 {
+				error("cant read local var in its own initializer")
+			}
+			return i // this index is the same as stack-slot
+		}
+	}
+	return -1
+}
 get_rule :: proc(t: Token_Type) -> ^Parse_Rule {
 	return &RULES[t]
 }
@@ -253,6 +332,15 @@ Parse_Rule :: struct {
 	precedence: Precedence,
 }
 
+Compiler :: struct {
+	locals:      [255]Local,
+	local_count: int,
+	scope_depth: int,
+}
+Local :: struct {
+	name:  string,
+	depth: int,
+}
 Parse_Fn :: #type proc(can_assign: bool = false)
 
 RULES := #partial [Token_Type]Parse_Rule {

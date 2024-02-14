@@ -25,6 +25,9 @@ Op_Code :: enum int {
 	Equality,
 	Greater,
 	Less,
+	Jump_If_False,
+	Jump,
+	Loop,
 	Return,
 }
 Chunk :: struct {
@@ -69,6 +72,10 @@ disassemble_instruction :: proc(chunk: ^Chunk, offset: int) -> int {
 	}
 	instr := chunk.code[offset]
 	switch cast(Op_Code)instr {
+	case .Loop:
+		return jump_instruction(reflect.enum_string(cast(Op_Code)instr), -1, chunk, offset)
+	case .Jump, .Jump_If_False:
+		return jump_instruction(reflect.enum_string(cast(Op_Code)instr), 1, chunk, offset)
 	case .Get_Local, .Set_Local:
 		return byte_instruction(reflect.enum_string(cast(Op_Code)instr), chunk, offset)
 	case .Constant, .Define_Global, .Get_Global, .Set_Global:
@@ -99,6 +106,11 @@ constant_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
 	return offset + 2
 }
 
+jump_instruction :: proc(name: string, sign: int, chunk: ^Chunk, offset: int) -> int {
+	jump := chunk.code[offset + 1]
+	fmt.printf("%-16s %4d -> %d\n", name, offset, offset + 2 + sign * jump)
+	return offset + 2
+}
 byte_instruction :: proc(name: string, chunk: ^Chunk, offset: int) -> int {
 	slot := chunk.code[offset + 1]
 	fmt.printf("%-16s %4d\n", name, slot)

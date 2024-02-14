@@ -227,6 +227,22 @@ run :: proc() -> Interpret_Result {
 		case .Print:
 			print_value(pop_value())
 			fmt.printf("\n")
+
+		case .Jump:
+			offset := read_next()
+			vm.ip += offset
+		case .Jump_If_False:
+			offset := read_next()
+			if offset > 32 {
+				fmt.println(offset)
+				panic("eex")
+			}
+			if is_falsey(peek_value()) {
+				vm.ip += offset
+			}
+		case .Loop:
+			offset := read_next()
+			vm.ip -= offset
 		case .Return:
 			// fmt.printf("return :: ")
 			// print_value(pop_value())
@@ -249,9 +265,11 @@ print_value :: proc(value: Value) {
 	}
 }
 push_value :: proc(v: Value) {
-	fmt.print("push", vm.top + 1, " ")
-	print_value(v)
-	fmt.println()
+	when false {
+		fmt.print("push", vm.top + 1, " ")
+		print_value(v)
+		fmt.println()
+	}
 
 	vm.stack[vm.top] = v
 	vm.top += 1
@@ -259,7 +277,7 @@ push_value :: proc(v: Value) {
 pop_value :: proc() -> Value {
 	vm.top -= 1
 	if vm.top < 0 {runtime_error("!!! stack pointer went negative\n");return nil}
-	when true {
+	when false {
 		fmt.print("pop", vm.top, " ")
 		print_value(vm.stack[vm.top])
 		fmt.println()
@@ -319,6 +337,17 @@ emit_bytes :: proc(a, b: int) {
 	emit_byte(a)
 	emit_byte(b)
 }
+emit_jump :: proc(instr: int) -> int {
+	emit_byte(instr)
+	emit_byte(0xff)
+	return len(current_chunk().code) - 1
+}
+emit_loop :: proc(start: int) {
+	emit_byte(int(Op_Code.Loop))
+	offset := len(current_chunk().code) - start + 1
+	if offset > 65000 {error("loop too large")}
+	emit_byte(offset)
+}
 end_compiler :: proc() {
 	emit_byte(int(Op_Code.Return))
 	if DEBUG_PRINT_CODE {
@@ -329,6 +358,14 @@ end_compiler :: proc() {
 }
 emit_constant :: proc(v: Value) {
 	emit_bytes(int(Op_Code.Constant), set_constant(v))
+}
+patch_jump :: proc(offset: int) {
+	jump := len(current_chunk().code) - offset - 1
+	if jump > 65000 {
+		error("jump is too far")
+	}
+	current_chunk().code[offset] = jump //>> 8 & 0xff
+	// current_chunk().code[offset+1] = jump & 0xff
 }
 // TODO: fixme, he uses a u8 buf, need to write [8]u8 for f64
 set_constant :: proc(v: Value) -> int {

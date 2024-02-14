@@ -79,13 +79,80 @@ var_decl :: proc() {
 statement :: proc() {
 	if match_token(.Print) {
 		print_statement()
+	} else if match_token(.If) {
+		if_statement()
 	} else if match_token(.Left_Brace) {
 		begin_scope()
 		block()
 		end_scope()
+	} else if match_token(.While) {
+		while_statement()
+	} else if match_token(.For) {
+		for_statement()
 	} else {
 		expression_statement()
 	}
+}
+if_statement :: proc() {
+	consume(.Left_Paren, "Expect '(' after 'if'")
+	expression()
+	consume(.Right_Paren, "expect ')' after condition")
+	then_jump := emit_jump(int(Op_Code.Jump_If_False))
+	statement()
+	else_jump := emit_jump(int(Op_Code.Jump))
+	patch_jump(then_jump)
+	emit_byte(int(Op_Code.Pop))
+	if match_token(.Else) {statement()}
+	patch_jump(else_jump)
+}
+while_statement :: proc() {
+	loop_start := len(current_chunk().code)
+	consume(.Left_Paren, "expect '(' after 'while'")
+	expression()
+	consume(.Left_Paren, "expect ')' after condition")
+	exit_jump := emit_jump(int(Op_Code.Jump_If_False))
+	emit_byte(int(Op_Code.Pop))
+	statement()
+	emit_loop(loop_start)
+	patch_jump(exit_jump)
+	emit_byte(int(Op_Code.Pop))
+}
+for_statement :: proc() {
+	begin_scope()
+	consume(.Left_Paren, "expect '(' after 'for'")
+	if match_token(.Semi_Colon) {
+		// no initializer
+	} else if match_token(.Var) {
+		var_decl()
+	} else {
+		expression_statement()
+	}
+	loop_start := len(current_chunk().code)
+	exit_jump := -1
+	if !match_token(.Semi_Colon) {
+		expression()
+		consume(.Semi_Colon, "expect ';' after condition")
+		exit_jump = emit_jump(int(Op_Code.Jump_If_False))
+		emit_byte(int(Op_Code.Pop))
+	}
+	if !match_token(.Right_Paren) {
+		body_jump := emit_jump(int(Op_Code.Jump))
+		incr_start := len(current_chunk().code)
+		expression()
+		emit_byte(int(Op_Code.Pop))
+		consume(.Right_Paren, "expect ')' after increment")
+		emit_loop(loop_start)
+		loop_start = incr_start
+		patch_jump(body_jump)
+	}
+	statement()
+	emit_loop(loop_start)
+	if exit_jump != -1 {
+		patch_jump(exit_jump)
+		emit_byte(int(Op_Code.Pop))
+	}
+	end_scope()
+
 }
 expression_statement :: proc() {
 	expression()
@@ -198,12 +265,24 @@ literal :: proc(can_assign: bool = false) {
 		unreachable()
 	}
 }
-_string :: proc(can_assign: bool = false) {str := parser.previous.text[1:len(
-		parser.previous.text,
-	) -
-	1]
+_string :: proc(can_assign: bool = false) {
+	str := parser.previous.text[1:len(parser.previous.text) - 1]
 	obj: ^Obj = transmute(^Obj)copy_string(str)
 	emit_constant(obj)
+}
+_and :: proc(can_assign: bool = false) {
+	end_jump := emit_jump(int(Op_Code.Jump_If_False))
+	emit_byte(int(Op_Code.Pop))
+	parse_precedence(.And)
+	patch_jump(end_jump)
+}
+_or :: proc(can_assign: bool = false) {
+	else_jump := emit_jump(int(Op_Code.Jump_If_False))
+	end_jump := emit_jump(int(Op_Code.Jump))
+	patch_jump(else_jump)
+	emit_byte(int(Op_Code.Pop))
+	parse_precedence(.Or)
+	patch_jump(end_jump)
 }
 variable :: proc(can_assign: bool = false) {
 	named_variable(&parser.previous, can_assign)
@@ -366,7 +445,7 @@ RULES := #partial [Token_Type]Parse_Rule {
 	.Identifier    = {variable, nil, .None},
 	.String        = {_string, nil, .None},
 	.Number        = {number, nil, .None},
-	// .And = {nil, nil, .None},
+	.And           = {nil, _and, .And},
 	// .Class = {nil, nil, .None},
 	// .Else = {nil, nil, .None},
 	.False         = {literal, nil, .None},
@@ -374,7 +453,7 @@ RULES := #partial [Token_Type]Parse_Rule {
 	// .Fun = {nil, nil, .None},
 	// .If = {nil, nil, .None},
 	.Nil           = {literal, nil, .None},
-	// .Or = {nil, nil, .None},
+	.Or            = {nil, _or, .Or},
 	// .Print = {nil, nil, .None},
 	// .Return = {nil, nil, .None},
 	// .Super = {nil, nil, .None},
